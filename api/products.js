@@ -1,45 +1,48 @@
 module.exports = async (req, res) => {
   try {
-    const SHOPIFY_DOMAIN = "lilygraceco.com"; // <-- replace this
+    const SHOPIFY_DOMAIN = "lilygraceco.com"; // <-- replace with your domain
     const STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
 
-    if (!SHOPIFY_DOMAIN || SHOPIFY_DOMAIN.includes("YOUR-STORE")) {
-      return res.status(400).json({
-        error: "SHOPIFY_DOMAIN is not set correctly in api/products.js"
-      });
-    }
+    const {
+      search = "",
+      category = "",
+      colorway = "",
+      limit = "12"
+    } = req.query;
 
-    if (!STOREFRONT_TOKEN) {
-      return res.status(400).json({
-        error: "Missing SHOPIFY_STOREFRONT_TOKEN env var in Vercel (and redeploy)."
-      });
-    }
+    const first = Math.min(parseInt(limit || "12", 10), 50);
+
+    // Build a Shopify search string using tags/product type
+    // Recommended tags: category:leash, colorway:Maranello Red, etc.
+    const queryParts = [];
+    if (search) queryParts.push(`title:*${search}* OR tag:*${search}*`);
+    if (category) queryParts.push(`tag:category:${category}`);
+    if (colorway) queryParts.push(`tag:colorway:${colorway}`);
+
+    const shopifyQueryString = queryParts.length ? queryParts.join(" AND ") : "";
 
     const query = `
-      {
-        products(first: 10) {
+      query Products($first: Int!, $q: String) {
+        products(first: $first, query: $q) {
           edges {
             node {
               id
               title
               handle
               description
-              images(first: 1) {
-                edges {
-                  node {
-                    url
-                    altText
-                  }
-                }
+              tags
+              productType
+              images(first: 3) {
+                edges { node { url altText } }
               }
-              variants(first: 1) {
+              variants(first: 10) {
                 edges {
                   node {
-                    price {
-                      amount
-                      currencyCode
-                    }
+                    id
+                    title
+                    sku
                     availableForSale
+                    price { amount currencyCode }
                   }
                 }
               }
@@ -49,45 +52,64 @@ module.exports = async (req, res) => {
       }
     `;
 
-    const shopifyRes = await fetch(
-      `https://${SHOPIFY_DOMAIN}/api/2024-01/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Storefront-Access-Token": STOREFRONT_TOKEN
-        },
-        body: JSON.stringify({ query })
-      }
-    );
-
-    const text = await shopifyRes.text();
-
-    // If Shopify returns non-200, show the response body (super helpful)
-    if (!shopifyRes.ok) {
-      return res.status(shopifyRes.status).json({
-        error: "Shopify request failed",
-        status: shopifyRes.status,
-        body: text
-      });
-    }
-
-    // Shopify response is JSON; parse it safely
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      return res.status(500).json({
-        error: "Shopify returned non-JSON response",
-        body: text
-      });
-    }
-
-    return res.status(200).json(data);
-  } catch (err) {
-    return res.status(500).json({
-      error: "Function crashed",
-      message: err?.message || String(err)
+    const response = await fetch(`https://${SHOPIFY_DOMAIN}/api/2024-01/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": STOREFRONT_TOKEN
+      },
+      body: JSON.stringify({
+        query,
+        variables: { first, q: shopifyQueryString || null }
+      })
     });
+
+    const json = await response.json();
+
+    if (!response.ok || json.errors) {
+      return res.status(500).json({
+        error: "Shopify query failed",
+        shopifyStatus: response.status,
+        shopifyErrors: json.errors || null,
+        body: json
+      });
+    }
+
+    // Normalize into a clean list for GPT use
+    const products = (json.data.products.edges || []).map(({ node }) => {
+      const firstVariant = node.variants.edges?.[0]?.node;
+      const firstImage = node.images.edges?.[0]?.node;
+
+      return {
+        id: node.id,
+        handle: node.handle,
+        title: node.title,
+        description: node.description,
+        category: node.productType || null,
+        colorway: (node.tags || []).find(t => t.startsWith("colorway:"))?.replace("colorway:", "") || null,
+        collectionHandles: [],
+        price: firstVariant ? parseFloat(firstVariant.price.amount) : null,
+        currency: firstVariant ? firstVariant.price.currencyCode : "USD",
+        inStock: firstVariant ? !!firstVariant.availableForSale : null,
+        variants: (node.variants.edges || []).map(({ node: v }) => ({
+          id: v.id,
+          title: v.title,
+          sku: v.sku,
+          price: parseFloat(v.price.amount),
+          currency: v.price.currencyCode,
+          inStock: !!v.availableForSale
+        })),
+        images: (node.images.edges || []).map(({ node: img }) => ({
+          url: img.url,
+          altText: img.altText || ""
+        })),
+        productUrl: `https://${SHOPIFY_DOMAIN.replace(".myshopify.com", "")}.com/products/${node.handle}`,
+        tags: node.tags || []
+      };
+    });
+
+    return res.status(200).json({ products });
+  } catch (err) {
+    return res.status(500).json({ error: "Function crashed", message: err?.message || String(err) });
   }
 };
