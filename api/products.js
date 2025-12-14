@@ -1,25 +1,14 @@
 module.exports = async (req, res) => {
   try {
-    const SHOPIFY_DOMAIN = "lilygraceco.com"; // <-- replace with your domain
+    const SHOPIFY_DOMAIN = "lilygraceco.com"; // <-- change this
     const STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
 
-    const {
-      search = "",
-      category = "",
-      colorway = "",
-      limit = "12"
-    } = req.query;
+    const search = (req.query.search || "").trim();
+    const limit = Math.min(parseInt(req.query.limit || "12", 10), 50);
 
-    const first = Math.min(parseInt(limit || "12", 10), 50);
-
-    // Build a Shopify search string using tags/product type
-    // Recommended tags: category:leash, colorway:Maranello Red, etc.
-    const queryParts = [];
-    if (search) queryParts.push(`title:*${search}* OR tag:*${search}*`);
-    if (category) queryParts.push(`tag:category:${category}`);
-    if (colorway) queryParts.push(`tag:colorway:${colorway}`);
-
-    const shopifyQueryString = queryParts.length ? queryParts.join(" AND ") : "";
+    // Simple Shopify search: works even if you have ZERO tags set up
+    // It searches title/description for the word(s) you type.
+    const shopifySearch = search ? search : null;
 
     const query = `
       query Products($first: Int!, $q: String) {
@@ -32,9 +21,7 @@ module.exports = async (req, res) => {
               description
               tags
               productType
-              images(first: 3) {
-                edges { node { url altText } }
-              }
+              images(first: 3) { edges { node { url altText } } }
               variants(first: 10) {
                 edges {
                   node {
@@ -60,7 +47,7 @@ module.exports = async (req, res) => {
       },
       body: JSON.stringify({
         query,
-        variables: { first, q: shopifyQueryString || null }
+        variables: { first: limit, q: shopifySearch }
       })
     });
 
@@ -70,46 +57,36 @@ module.exports = async (req, res) => {
       return res.status(500).json({
         error: "Shopify query failed",
         shopifyStatus: response.status,
-        shopifyErrors: json.errors || null,
-        body: json
+        shopifyErrors: json.errors || null
       });
     }
 
-    // Normalize into a clean list for GPT use
     const products = (json.data.products.edges || []).map(({ node }) => {
       const firstVariant = node.variants.edges?.[0]?.node;
-      const firstImage = node.images.edges?.[0]?.node;
 
       return {
         id: node.id,
         handle: node.handle,
         title: node.title,
         description: node.description,
-        category: node.productType || null,
-        colorway: (node.tags || []).find(t => t.startsWith("colorway:"))?.replace("colorway:", "") || null,
-        collectionHandles: [],
-        price: firstVariant ? parseFloat(firstVariant.price.amount) : null,
+        productType: node.productType || null,
+        price: firstVariant ? Number(firstVariant.price.amount) : null,
         currency: firstVariant ? firstVariant.price.currencyCode : "USD",
         inStock: firstVariant ? !!firstVariant.availableForSale : null,
-        variants: (node.variants.edges || []).map(({ node: v }) => ({
-          id: v.id,
-          title: v.title,
-          sku: v.sku,
-          price: parseFloat(v.price.amount),
-          currency: v.price.currencyCode,
-          inStock: !!v.availableForSale
-        })),
         images: (node.images.edges || []).map(({ node: img }) => ({
           url: img.url,
           altText: img.altText || ""
         })),
-        productUrl: `https://${SHOPIFY_DOMAIN.replace(".myshopify.com", "")}.com/products/${node.handle}`,
+        productUrl: `https://YOUR-STOREFRONT-DOMAIN.com/products/${node.handle}`,
         tags: node.tags || []
       };
     });
 
     return res.status(200).json({ products });
   } catch (err) {
-    return res.status(500).json({ error: "Function crashed", message: err?.message || String(err) });
+    return res.status(500).json({
+      error: "Function crashed",
+      message: err?.message || String(err)
+    });
   }
 };
