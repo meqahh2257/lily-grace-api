@@ -1,6 +1,6 @@
 module.exports = async (req, res) => {
   try {
-    const SHOPIFY_DOMAIN = "YOUR-STORE.myshopify.com"; // <-- replace this
+    const SHOPIFY_DOMAIN = "lilygraceco.com"; // <-- replace this
     const STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
 
     if (!SHOPIFY_DOMAIN || SHOPIFY_DOMAIN.includes("YOUR-STORE")) {
