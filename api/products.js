@@ -1,46 +1,64 @@
 module.exports = async (req, res) => {
   try {
-    const SHOPIFY_DOMAIN = "lilygraceco.com"; // <-- change this
+    // IMPORTANT: use your Shopify *.myshopify.com domain here (NOT lilygraceco.com)
+    // Example: "lily-grace-co.myshopify.com"
+    const SHOPIFY_DOMAIN = "YOUR-SHOPIFY-DOMAIN.myshopify.com"; // <-- replace this
     const STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
-    const category = (req.query.category || "backpack").trim();
-    const colorway = (req.query.colorway || "Tuxedo Black").trim();
-    const category = (req.query.category || "clutch").trim();
-    const colorway = (req.query.colorway || "Airlie Blue").trim();
-    const category = (req.query.category || "tote").trim();
-    const colorway = (req.query.colorway || "Rose Petal Pink").trim();
-    const category = (req.query.category || "collar").trim();
-    const colorway = (req.query.colorway || "Lemon Yellow").trim();
-    const category = (req.query.category || "harness").trim();
-    const colorway = (req.query.colorway || "Lily Grace Blue").trim();
-    const category = (req.query.category || "set").trim();
-    const category = (req.query.category || "wristlet").trim();
-    const category = (req.query.category || "leash").trim();
-    const category = (req.query.category || "phonebag").trim();
 
+    if (!STOREFRONT_TOKEN) {
+      return res.status(400).json({ error: "Missing SHOPIFY_STOREFRONT_TOKEN env var" });
+    }
 
-   const search = (req.query.search || "").trim();
-const category = (req.query.category || "").trim();
-const colorway = (req.query.colorway || "").trim();
-const limit = Math.min(parseInt(req.query.limit || "12", 10), 50);
+    // Read query parameters from the URL
+    const search = (req.query.search || "").trim();
+    const category = (req.query.category || "").trim();   // expects tags like category:leash
+    const colorway = (req.query.colorway || "").trim();   // expects tags like colorway:Lemon Yellow
+    const limit = Math.min(parseInt(req.query.limit || "12", 10), 50);
 
-// 👉 THIS is the Shopify search builder
-const parts = [];
+    // Build Shopify query string
+    const parts = [];
 
-if (search) {
-  parts.push(`title:*${search}* OR tag:*${search}* OR product_type:*${search}*`);
-}
+    if (search) {
+      parts.push(`title:*${search}* OR tag:*${search}* OR product_type:*${search}*`);
+    }
+    if (category) {
+      parts.push(`tag:category:${category}`);
+    }
+    if (colorway) {
+      parts.push(`tag:colorway:${colorway}`);
+    }
 
-if (category) {
-  parts.push(`tag:category:${category}`);
-}
+    const shopifySearch = parts.length ? parts.join(" AND ") : null;
 
-if (colorway) {
-  parts.push(`tag:colorway:${colorway}`);
-}
-
-const shopifySearch = parts.length ? parts.join(" AND ") : null;
-
-
+    // Shopify Storefront API GraphQL query
+    const query = `
+      query Products($first: Int!, $q: String) {
+        products(first: $first, query: $q) {
+          edges {
+            node {
+              id
+              title
+              handle
+              description
+              tags
+              productType
+              images(first: 3) { edges { node { url altText } } }
+              variants(first: 10) {
+                edges {
+                  node {
+                    id
+                    title
+                    sku
+                    availableForSale
+                    price { amount currencyCode }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
 
     const response = await fetch(`https://${SHOPIFY_DOMAIN}/api/2024-01/graphql.json`, {
       method: "POST",
@@ -80,13 +98,20 @@ const shopifySearch = parts.length ? parts.join(" AND ") : null;
           url: img.url,
           altText: img.altText || ""
         })),
-        productUrl: `https://YOUR-STOREFRONT-DOMAIN.com/products/${node.handle}`,
+        // IMPORTANT: replace with your real customer-facing domain:
+        productUrl: `https://lilygraceco.com/products/${node.handle}`,
         tags: node.tags || []
       };
     });
-return res.status(200).json({ version: "v2-search", queryReceived: req.query, products });
 
-    return res.status(200).json({ products });
+    // Debug output so you can see what filters were applied
+    return res.status(200).json({
+      version: "v3-filters",
+      queryReceived: req.query,
+      shopifySearch,
+      count: products.length,
+      products
+    });
   } catch (err) {
     return res.status(500).json({
       error: "Function crashed",
