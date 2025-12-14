@@ -2,7 +2,7 @@ module.exports = async (req, res) => {
   try {
     // IMPORTANT: use your Shopify *.myshopify.com domain here (NOT lilygraceco.com)
     // Example: "lily-grace-co.myshopify.com"
-    const SHOPIFY_DOMAIN = "lilygraceco.com"; // <-- replace this
+    const SHOPIFY_DOMAIN = "d49873.myshopify.com"; // <-- replace this
     const STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
 
     if (!STOREFRONT_TOKEN) {
