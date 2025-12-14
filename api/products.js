@@ -81,6 +81,7 @@ module.exports = async (req, res) => {
         tags: node.tags || []
       };
     });
+return res.status(200).json({ version: "v2-search", queryReceived: req.query, products });
 
     return res.status(200).json({ products });
   } catch (err) {
