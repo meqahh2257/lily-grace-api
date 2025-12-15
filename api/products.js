@@ -121,3 +121,16 @@ if (debug) {
     products
   });
 }
+
+// ✅ default (what your GPT should use)
+return res.status(200).json({ products });
+
+  } catch (err) {
+    return res.status(500).json({
+      error: "Function crashed",
+      message: err?.message || String(err)
+    });
+  }
+};
+
+return res.status(200).json({ products });
