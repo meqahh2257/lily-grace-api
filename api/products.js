@@ -22,11 +22,15 @@ module.exports = async (req, res) => {
       parts.push(`title:*${search}* OR tag:*${search}* OR product_type:*${search}*`);
     }
     if (category) {
-      parts.push(`tag:category:${category}`);
+  // category tags have no spaces, but quoting is still safe
+      parts.push(`tag:"category:${category}"`);
     }
+
     if (colorway) {
-      parts.push(`tag:colorway:${colorway}`);
+  // colorways can contain spaces, so quoting is REQUIRED
+      parts.push(`tag:"colorway:${colorway}"`);
     }
+
 
     const shopifySearch = parts.length ? parts.join(" AND ") : null;
 
