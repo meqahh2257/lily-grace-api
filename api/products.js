@@ -2,7 +2,7 @@ module.exports = async (req, res) => {
   try {
     // IMPORTANT: use your Shopify *.myshopify.com domain here (NOT lilygraceco.com)
     // Example: "lily-grace-co.myshopify.com"
-    const SHOPIFY_DOMAIN = "www.lilygraceco.com"; // <-- replace this
+    const SHOPIFY_DOMAIN = "d49873.myshopify.com"; // <-- replace this
     const STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
 
     if (!STOREFRONT_TOKEN) {
@@ -109,13 +109,21 @@ module.exports = async (req, res) => {
     });
 
     // Debug output so you can see what filters were applied
-    return res.status(200).json({
-      version: "v3-filters",
-      queryReceived: req.query,
-      shopifySearch,
-      count: products.length,
-      products
-    });
+  // Return clean results by default; debug only if ?debug=true
+const debug = String(req.query.debug || "").toLowerCase() === "true";
+
+if (debug) {
+  return res.status(200).json({
+    version: "v3-filters",
+    queryReceived: req.query,
+    shopifySearch,
+    count: products.length,
+    products
+  });
+}
+
+return res.status(200).json({ products });
+
   } catch (err) {
     return res.status(500).json({
       error: "Function crashed",
