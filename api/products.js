@@ -1,40 +1,27 @@
 module.exports = async (req, res) => {
   try {
-    // IMPORTANT: use your Shopify *.myshopify.com domain here (NOT lilygraceco.com)
-    // Example: "lily-grace-co.myshopify.com"
-    const SHOPIFY_DOMAIN = "d49873.myshopify.com"; // <-- replace this
+    const SHOPIFY_DOMAIN = "d49873.myshopify.com";
     const STOREFRONT_TOKEN = process.env.SHOPIFY_STOREFRONT_TOKEN;
 
     if (!STOREFRONT_TOKEN) {
       return res.status(400).json({ error: "Missing SHOPIFY_STOREFRONT_TOKEN env var" });
     }
 
-    // Read query parameters from the URL
+    // Read query parameters
     const search = (req.query.search || "").trim();
-    const category = (req.query.category || "").trim();   // expects tags like category:leash
-    const colorway = (req.query.colorway || "").trim();   // expects tags like colorway:Lemon Yellow
+    const category = (req.query.category || "").trim();
+    const colorway = (req.query.colorway || "").trim();
     const limit = Math.min(parseInt(req.query.limit || "12", 10), 50);
 
     // Build Shopify query string
     const parts = [];
-
-    if (search) {
-      parts.push(`title:*${search}* OR tag:*${search}* OR product_type:*${search}*`);
-    }
-    if (category) {
-  // category tags have no spaces, but quoting is still safe
-      parts.push(`tag:"category:${category}"`);
-    }
-
-    if (colorway) {
-  // colorways can contain spaces, so quoting is REQUIRED
-      parts.push(`tag:"colorway:${colorway}"`);
-    }
-
+    if (search) parts.push(`title:*${search}* OR tag:*${search}* OR product_type:*${search}*`);
+    if (category) parts.push(`tag:"category:${category}"`);
+    if (colorway) parts.push(`tag:"colorway:${colorway}"`);
 
     const shopifySearch = parts.length ? parts.join(" AND ") : null;
 
-    // Shopify Storefront API GraphQL query
+    // GraphQL query
     const query = `
       query Products($first: Int!, $q: String) {
         products(first: $first, query: $q) {
@@ -102,29 +89,24 @@ module.exports = async (req, res) => {
           url: img.url,
           altText: img.altText || ""
         })),
-        // IMPORTANT: replace with your real customer-facing domain:
         productUrl: `https://lilygraceco.com/products/${node.handle}`,
         tags: node.tags || []
       };
     });
 
-    // Debug output so you can see what filters were applied
-  // Return clean results by default; debug only if ?debug=true
-const debug = String(req.query.debug || "").toLowerCase() === "true";
+    // Return clean by default; debug only if ?debug=true
+    const debug = String(req.query.debug || "").toLowerCase() === "true";
+    if (debug) {
+      return res.status(200).json({
+        version: "v3-filters",
+        queryReceived: req.query,
+        shopifySearch,
+        count: products.length,
+        products
+      });
+    }
 
-if (debug) {
-  return res.status(200).json({
-    version: "v3-filters",
-    queryReceived: req.query,
-    shopifySearch,
-    count: products.length,
-    products
-  });
-}
-
-// ✅ default (what your GPT should use)
-return res.status(200).json({ products });
-
+    return res.status(200).json({ products });
   } catch (err) {
     return res.status(500).json({
       error: "Function crashed",
@@ -132,5 +114,3 @@ return res.status(200).json({ products });
     });
   }
 };
-
-return res.status(200).json({ products });
